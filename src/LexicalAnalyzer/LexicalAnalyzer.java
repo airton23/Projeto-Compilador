@@ -29,7 +29,6 @@ public class LexicalAnalyzer {
         palavrasReservadas.put("senao", TokenType.SENAO);
         palavrasReservadas.put("enquanto", TokenType.ENQUANTO);
         palavrasReservadas.put("faca", TokenType.FACA);
-        palavrasReservadas.put("leia", TokenType.LEIA);
         palavrasReservadas.put("escreva", TokenType.ESCREVA);
         palavrasReservadas.put("retorno", TokenType.RETORNO);
         palavrasReservadas.put("break", TokenType.BREAK);

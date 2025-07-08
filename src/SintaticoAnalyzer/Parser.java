@@ -9,9 +9,15 @@ public class Parser {
     private final LexicalAnalyzer lexer;
     private Token tokenAtual;
 
+    // NOVO: Variáveis de estado para controle semântico
+    private boolean dentroDeLaco = false;
+    private enum CategoriaSubRotina { NENHUMA, FUNCAO, PROCEDIMENTO }
+    private CategoriaSubRotina subRotinaAtual = CategoriaSubRotina.NENHUMA;
+
+
     public Parser(LexicalAnalyzer lexer) {
         this.lexer = lexer;
-        this.tokenAtual = this.lexer.obterProximoToken(); // "Puxa" o primeiro token
+        this.tokenAtual = this.lexer.obterProximoToken();
     }
 
     private void avancarToken() {
@@ -51,6 +57,7 @@ public class Parser {
         comandos();
     }
 
+    // ... (nenhuma mudança nas declarações de variáveis)
     private void decl_var_opcional() {
         if (verificar(TokenType.VAR)) {
             consumir(TokenType.VAR);
@@ -101,6 +108,8 @@ public class Parser {
             throw new ErroSintaticoException("Esperado um tipo (inteiro ou booleano)", tokenAtual);
         }
     }
+    // ... (fim da seção sem mudanças)
+
 
     private void decl_sub_opcional() {
         if (verificar(TokenType.PROCEDIMENTO) || verificar(TokenType.FUNCAO)) {
@@ -134,14 +143,23 @@ public class Parser {
         }
     }
 
+    // MODIFICADO: Adicionado controle de contexto de sub-rotina
     private void decl_proc() {
         consumir(TokenType.PROCEDIMENTO);
         consumir(TokenType.ID);
         parametros_formais_opc();
         consumir(TokenType.PONTO_E_VIRGULA);
-        bloco();
+
+        CategoriaSubRotina estadoAnterior = this.subRotinaAtual;
+        this.subRotinaAtual = CategoriaSubRotina.PROCEDIMENTO;
+        try {
+            bloco();
+        } finally {
+            this.subRotinaAtual = estadoAnterior; // Restaura o contexto anterior
+        }
     }
 
+    // MODIFICADO: Adicionado controle de contexto de sub-rotina
     private void decl_func() {
         consumir(TokenType.FUNCAO);
         consumir(TokenType.ID);
@@ -149,9 +167,17 @@ public class Parser {
         consumir(TokenType.DOIS_PONTOS);
         tipo();
         consumir(TokenType.PONTO_E_VIRGULA);
-        bloco();
+
+        CategoriaSubRotina estadoAnterior = this.subRotinaAtual;
+        this.subRotinaAtual = CategoriaSubRotina.FUNCAO;
+        try {
+            bloco();
+        } finally {
+            this.subRotinaAtual = estadoAnterior; // Restaura o contexto anterior
+        }
     }
 
+    // ... (nenhuma mudança nos parâmetros)
     private void parametros_formais_opc() {
         if (verificar(TokenType.ABRE_PAREN)) {
             consumir(TokenType.ABRE_PAREN);
@@ -161,7 +187,6 @@ public class Parser {
     }
 
     private void lista_parametros() {
-        // A lista pode ser vazia, mesmo dentro dos parênteses
         if (verificar(TokenType.ID)) {
             parametro();
             lista_parametros_rest();
@@ -180,6 +205,8 @@ public class Parser {
         consumir(TokenType.DOIS_PONTOS);
         tipo();
     }
+    // ... (fim da seção sem mudanças)
+
 
     private void comandos() {
         consumir(TokenType.INICIO);
@@ -197,7 +224,6 @@ public class Parser {
     private void lista_comandos_rest() {
         while(verificar(TokenType.PONTO_E_VIRGULA)) {
             consumir(TokenType.PONTO_E_VIRGULA);
-            // Evita erro com ; antes do fim
             if(!verificar(TokenType.FIM)){
                 comando();
             } else {
@@ -206,6 +232,7 @@ public class Parser {
         }
     }
 
+    // MODIFICADO: Adicionado controle de contexto para break e continue
     private void comando() {
         if (verificar(TokenType.INICIO)) {
             comandos();
@@ -215,15 +242,21 @@ public class Parser {
             comando_condicional();
         } else if (verificar(TokenType.ENQUANTO)) {
             comando_enquanto();
-        } else if (verificar(TokenType.LEIA)) {
-            comando_leitura();
         } else if (verificar(TokenType.ESCREVA)) {
             comando_escrita();
         } else if (verificar(TokenType.RETORNO)) {
             comando_retorno();
         } else if (verificar(TokenType.BREAK)) {
+            // VERIFICAÇÃO SEMÂNTICA
+            if (!this.dentroDeLaco) {
+                throw new ErroSintaticoException("Comando 'break' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
+            }
             consumir(TokenType.BREAK);
         } else if (verificar(TokenType.CONTINUE)) {
+            // VERIFICAÇÃO SEMÂNTICA
+            if (!this.dentroDeLaco) {
+                throw new ErroSintaticoException("Comando 'continue' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
+            }
             consumir(TokenType.CONTINUE);
         } else {
             throw new ErroSintaticoException("Esperado um comando válido (atribuição, se, enquanto, etc.)", tokenAtual);
@@ -259,18 +292,20 @@ public class Parser {
         }
     }
 
+    // MODIFICADO: Adicionado controle de contexto de laço
     private void comando_enquanto() {
         consumir(TokenType.ENQUANTO);
         expressao();
         consumir(TokenType.FACA);
-        comando();
-    }
 
-    private void comando_leitura() {
-        consumir(TokenType.LEIA);
-        consumir(TokenType.ABRE_PAREN);
-        consumir(TokenType.ID);
-        consumir(TokenType.FECHA_PAREN);
+        boolean estadoAnterior = this.dentroDeLaco; // Salva estado para laços aninhados
+        this.dentroDeLaco = true;
+
+        try {
+            comando(); // Analisa o corpo do laço
+        } finally {
+            this.dentroDeLaco = estadoAnterior; // Restaura o estado anterior
+        }
     }
 
     private void comando_escrita() {
@@ -280,11 +315,17 @@ public class Parser {
         consumir(TokenType.FECHA_PAREN);
     }
 
+    // MODIFICADO: Adicionado verificação de contexto
     private void comando_retorno() {
+        // VERIFICAÇÃO SEMÂNTICA
+        if (this.subRotinaAtual != CategoriaSubRotina.FUNCAO) {
+            throw new ErroSintaticoException("Comando 'retorno' só pode ser usado dentro de uma função", tokenAtual);
+        }
         consumir(TokenType.RETORNO);
         expressao();
     }
 
+    // ... (nenhuma mudança nas expressões e fatores)
     private void expressao() {
         expressao_simples();
         expressao_rel_opcional();
@@ -299,7 +340,6 @@ public class Parser {
     }
 
     private void op_rel() {
-        // Apenas consome o operador relacional, qualquer um dos válidos
         switch (tokenAtual.type) {
             case IGUAL: consumir(TokenType.IGUAL); break;
             case DIFERENTE: consumir(TokenType.DIFERENTE); break;
@@ -404,7 +444,6 @@ public class Parser {
     }
 
     private void lista_argumentos() {
-        // A lista de argumentos pode ser vazia
         if (!verificar(TokenType.FECHA_PAREN)) {
             expressao();
             lista_argumentos_rest();

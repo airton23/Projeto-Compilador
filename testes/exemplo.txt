@@ -4,16 +4,27 @@ var
   contador, limite: inteiro;
   ativo: booleano;
 
-procedimento ImprimirContagem;
+procedimento ImprimirContagem(limite_local: inteiro);
 inicio
   enquanto contador < limite faca
   inicio
     escreva(contador);
     contador := contador + 1;
+
+    se teste > 1 entao
+        continue
+    senao
+        break
   fim;
   
   se ativo = verdadeiro entao
     escreva(999);
+fim;
+
+
+funcao Responder(limite_local: inteiro): inteiro;
+inicio
+    retorno 1;
 fim;
 
 inicio

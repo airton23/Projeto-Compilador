@@ -3,7 +3,7 @@ package LexicalAnalyzer;
 public enum TokenType {
     // Palavras-chave
     PROGRAMA, VAR, INTEIRO, BOOLEANO, PROCEDIMENTO, FUNCAO, INICIO, FIM,
-    SE, ENTAO, SENAO, ENQUANTO, FACA, LEIA, ESCREVA, RETORNO, BREAK, CONTINUE,
+    SE, ENTAO, SENAO, ENQUANTO, FACA, ESCREVA, RETORNO, BREAK, CONTINUE,
     VERDADEIRO, FALSO, NAO, OU, E,
 
     // Operadores e Símbolos
