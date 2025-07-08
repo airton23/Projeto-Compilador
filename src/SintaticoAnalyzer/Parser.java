@@ -55,7 +55,6 @@ public class Parser {
         if (verificar(TokenType.VAR)) {
             consumir(TokenType.VAR);
             lista_decl_var();
-            consumir(TokenType.PONTO_E_VIRGULA);
         }
     }
 
@@ -208,7 +207,9 @@ public class Parser {
     }
 
     private void comando() {
-        if (verificar(TokenType.ID)) {
+        if (verificar(TokenType.INICIO)) {
+            comandos();
+        } else if (verificar(TokenType.ID)) {
             comando_atr_chamada();
         } else if (verificar(TokenType.SE)) {
             comando_condicional();

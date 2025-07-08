@@ -1,3 +1,27 @@
-1234 ( )
-SE ( EU = EU )
-ENTAO A = B
+programa TesteCompleto;
+
+var
+  contador, limite: inteiro;
+  ativo: booleano;
+
+procedimento ImprimirContagem;
+inicio
+  enquanto contador < limite faca
+  inicio
+    escreva(contador);
+    contador := contador + 1;
+  fim;
+  
+  se ativo = verdadeiro entao
+    escreva(999);
+fim;
+
+inicio
+  limite := 10;
+  contador := 0;
+  ativo := verdadeiro;
+  
+  ImprimirContagem();
+  
+  escreva(0);
+fim.
