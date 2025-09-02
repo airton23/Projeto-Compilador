@@ -471,24 +471,51 @@ public class Parser {
         ResultadoExpressao(String nome, TokenType tipo) { this.nome = nome; this.tipo = tipo; }
     }
 
+    private boolean ehRelacional(TokenType t) {
+        return t == TokenType.IGUAL || t == TokenType.DIFERENTE ||
+                t == TokenType.MENOR || t == TokenType.MENOR_IGUAL ||
+                t == TokenType.MAIOR || t == TokenType.MAIOR_IGUAL;
+    }
+
     private ResultadoExpressao expressao() {
         ResultadoExpressao resEsq = expressao_simples();
-        if (verificar(TokenType.IGUAL) || verificar(TokenType.DIFERENTE) || verificar(TokenType.MENOR) ||
-                verificar(TokenType.MENOR_IGUAL) || verificar(TokenType.MAIOR) || verificar(TokenType.MAIOR_IGUAL)) {
-            Token op = tokenAtual;
+
+        if (ehRelacional(tokenAtual.type)) {
+            Token op = tokenAtual;           // <-- guarda o token do operador
+            TokenType operador = tokenAtual.type;
             avancarToken();
+
             ResultadoExpressao resDir = expressao_simples();
 
-            if (resEsq.tipo != TokenType.INTEIRO || resDir.tipo != TokenType.INTEIRO) {
-                throw new ErroSemanticoException("Operadores relacionais exigem operandos inteiros.", op);
+            switch (operador) {
+                case IGUAL:
+                case DIFERENTE:
+                    if (resEsq.tipo != resDir.tipo) {
+                        throw new ErroSemanticoException(
+                                "Os operadores '=' e '!=' exigem operandos do mesmo tipo ("
+                                        + resEsq.tipo + " vs " + resDir.tipo + ").", op);
+                    }
+                    break;
+
+                case MENOR:
+                case MENOR_IGUAL:
+                case MAIOR:
+                case MAIOR_IGUAL:
+                    if (resEsq.tipo != TokenType.INTEIRO || resDir.tipo != TokenType.INTEIRO) {
+                        throw new ErroSemanticoException(
+                                "O operador '" + op.lexeme + "' exige operandos inteiros.", op);
+                    }
+                    break;
             }
 
             String temp = gerador.novoTemp();
             gerador.gerar(op.lexeme, resEsq.nome, resDir.nome, temp);
             return new ResultadoExpressao(temp, TokenType.BOOLEANO);
         }
+
         return resEsq;
     }
+
 
     private ResultadoExpressao expressao_simples() {
         sinal_opcional();
