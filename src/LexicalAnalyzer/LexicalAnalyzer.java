@@ -57,12 +57,12 @@ public class LexicalAnalyzer {
 
     public Token obterProximoToken() {
         if (tokens.isEmpty()) {
-            escanearTokens(); // Escaneia todos os tokens na primeira chamada
+            escanearTokens();
         }
         if (indiceAtualToken < tokens.size()) {
             return tokens.get(indiceAtualToken++);
         }
-        return tokens.get(tokens.size() - 1); // Retorna FIM_ARQUIVO repetidamente
+        return tokens.get(tokens.size() - 1);
     }
 
     private boolean isAtEnd() {

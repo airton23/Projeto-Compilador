@@ -15,7 +15,7 @@ inicio
   fim;
 fim;
 
-funcao PegaBooleano(): booleano;
+funcao PegaBooleano(p: booleano): booleano;
 inicio
   retorno verdadeiro;
 fim;
@@ -23,7 +23,7 @@ fim;
 inicio
   limite := 10;
   contador := 0;
-  ativo := PegaBooleano();
+  ativo := PegaBooleano(limite);
 
   ImprimirContagem(limite);
 
