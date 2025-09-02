@@ -10,8 +10,8 @@ public class ErroSemanticoException extends RuntimeException {
 
   private static String formatarMensagem(String mensagem, Token token) {
     if (token != null) {
-      return String.format("Erro Semântico na linha %d: %s (referente ao token: '%s')",
-              token.line, mensagem, token.lexeme);
+      return String.format("Erro Semântico na linha %d: %s ",
+              token.line, mensagem);
     }
     return "Erro Semântico: " + mensagem;
   }

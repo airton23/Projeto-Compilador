@@ -1,62 +1,49 @@
-programa TesteEscopo;
+programa TesteFinalCompleto;
 
 var
-  global1: inteiro;
-  x, z: inteiro;
-  local: booleano;
-  g: inteiro;
+  numero_base, resultado_global: inteiro;
+  loop_ativo: booleano;
 
-funcao modificaGlobal(x_param: inteiro): inteiro;
-  (* CORREÇÃO: Variáveis movidas para o topo do bloco da função *)
+funcao Dobro(n: inteiro): inteiro;
   var
-    z_local: inteiro;
-    x, local_interno: inteiro;
-
+    resultado_local: inteiro;
   inicio
-    z_local := 15;
-    global1 := x_param * 3;
-
-    if global1 >= z_local entao
-    inicio
-      (* As variáveis agora são usadas aqui, mas declaradas acima *)
-      x := 17;
-      local_interno := 1;
-      global1 := local_interno + x;
-      retorno global1;
-    fim;
-
-    escreva(x_param);
-    escreva(z_local);
-    retorno global1 * z_local;
+    resultado_local := n * 2;
+    retorno resultado_local;
   fim;
 
-procedure P();
-  (* CORREÇÃO: Variáveis movidas para o topo do bloco do procedimento *)
+procedimento ContagemAteLimite(limite: inteiro);
   var
-    a: inteiro;
-    b: inteiro;
+    contador: inteiro;
   inicio
-    if g > 0 entao
+    contador := 1;
+    enquanto contador <= limite faca
     inicio
-      (* A variável 'b' é usada aqui, mas declarada acima *)
-      b := 10;
-      a := b;
+      escreva(contador);
+
+      se (contador * 2) > 10 entao
+        loop_ativo := falso;
+
+      contador := contador + 1;
     fim;
   fim;
 
-inicio (* Bloco principal *)
-  x := 34;
-  z := 23;
-  local := falso;
-  g := 5;
+inicio
+  numero_base := 5;
+  numero_base := 7;
+  loop_ativo := verdadeiro;
 
-  escreva(x + z);
+  escreva(100);
 
-  (* Chama a função com a variável global 'x' e armazena o resultado em 'g' *)
-  g := modificaGlobal(x);
+  ContagemAteLimite(numero_base);
 
-  escreva(g);      (* Exibe o valor retornado pela função *)
-  escreva(global1); (* Exibe o valor da variável global após a modificação *)
+  resultado_global := Dobro(numero_base);
+  escreva(resultado_global);
 
-  P(); (* Chama o procedimento *)
+  se (resultado_global > 9) e loop_ativo entao
+    escreva(1)
+  senao
+    escreva(0);
+
+  escreva(200);
 fim.

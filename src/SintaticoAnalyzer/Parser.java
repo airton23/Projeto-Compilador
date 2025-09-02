@@ -1,5 +1,6 @@
 package SintaticoAnalyzer;
 
+import GeradorCodigo.GeradorDeCodigo;
 import LexicalAnalyzer.LexicalAnalyzer;
 import LexicalAnalyzer.Token;
 import LexicalAnalyzer.TokenType;
@@ -15,21 +16,31 @@ public class Parser {
     private final LexicalAnalyzer lexer;
     private Token tokenAtual;
 
-    // ANÁLISE SEMÂNTICA: Instância da tabela de símbolos para controle de escopo e declarações.
+    // ANÁLISE SEMÂNTICA: Instância da tabela de símbolos.
     private final TabelaDeSimbolos tabelaDeSimbolos;
 
-    // Variáveis de estado para controle semântico contextual (laços, funções, etc.).
+    // GERAÇÃO DE CÓDIGO: Instância do gerador de código intermediário.
+    private final GeradorDeCodigo gerador;
+
+    // Variáveis de estado para controle semântico contextual.
     private boolean dentroDeLaco = false;
     private enum CategoriaSubRotina { NENHUMA, FUNCAO, PROCEDIMENTO }
     private CategoriaSubRotina subRotinaAtual = CategoriaSubRotina.NENHUMA;
-    // ANÁLISE SEMÂNTICA: Armazena o símbolo da função atual para verificar o tipo de retorno.
     private Simbolo funcaoAtual = null;
 
+    /**
+     * Construtor do Parser.
+     * @param lexer O analisador léxico que fornecerá os tokens.
+     */
     public Parser(LexicalAnalyzer lexer) {
         this.lexer = lexer;
-        // ANÁLISE SEMÂNTICA: Inicializa a tabela de símbolos. O escopo global é aberto no construtor da tabela.
-        this.tabelaDeSimbolos = new TabelaDeSimbolos();
         this.tokenAtual = this.lexer.obterProximoToken();
+        this.tabelaDeSimbolos = new TabelaDeSimbolos();
+        this.gerador = new GeradorDeCodigo();
+    }
+
+    public GeradorDeCodigo getGerador() {
+        return this.gerador;
     }
 
     private void avancarToken() {
@@ -48,6 +59,9 @@ public class Parser {
         return this.tokenAtual.type == tipo;
     }
 
+    /**
+     * Método principal que inicia a análise.
+     */
     public void parse() {
         programa();
         if (!verificar(TokenType.FIM_ARQUIVO)) {
@@ -59,16 +73,12 @@ public class Parser {
         consumir(TokenType.PROGRAMA);
         Token idPrograma = tokenAtual;
         consumir(TokenType.ID);
-        // ANÁLISE SEMÂNTICA: Insere o nome do programa na tabela de símbolos do escopo global.
-        try {
-            tabelaDeSimbolos.inserir(new Simbolo(idPrograma.lexeme, TipoSimbolo.PROGRAMA, null));
-        } catch (RuntimeException e) {
-            throw new ErroSemanticoException(e.getMessage(), idPrograma);
-        }
+        // ANÁLISE SEMÂNTICA
+        tabelaDeSimbolos.inserir(new Simbolo(idPrograma.lexeme, TipoSimbolo.PROGRAMA, null));
         consumir(TokenType.PONTO_E_VIRGULA);
         bloco();
         consumir(TokenType.PONTO);
-        // ANÁLISE SEMÂNTICA: Fecha o escopo global ao final da compilação.
+        // ANÁLISE SEMÂNTICA
         tabelaDeSimbolos.fecharEscopo();
     }
 
@@ -101,25 +111,21 @@ public class Parser {
         }
     }
 
-    // MODIFICADO: para realizar a análise semântica da declaração de variáveis.
     private void decl_var() {
         List<Token> identificadores = new ArrayList<>();
-        lista_id(identificadores); // Coleta todos os identificadores (ex: a, b, c: inteiro)
+        lista_id(identificadores);
         consumir(TokenType.DOIS_PONTOS);
-        TokenType tipoVariavel = tipo(); // Obtém o tipo (INTEIRO ou BOOLEANO)
-
-        // ANÁLISE SEMÂNTICA: Insere cada variável declarada na tabela de símbolos do escopo atual.
+        TokenType tipoVariavel = tipo();
+        // ANÁLISE SEMÂNTICA
         for (Token id : identificadores) {
             try {
                 tabelaDeSimbolos.inserir(new Simbolo(id.lexeme, TipoSimbolo.VARIAVEL, tipoVariavel));
             } catch (RuntimeException e) {
-                // Lança um erro semântico se o identificador já foi declarado neste escopo.
                 throw new ErroSemanticoException(e.getMessage(), id);
             }
         }
     }
 
-    // MODIFICADO: para coletar os tokens de ID em uma lista.
     private void lista_id(List<Token> idList) {
         idList.add(tokenAtual);
         consumir(TokenType.ID);
@@ -134,7 +140,6 @@ public class Parser {
         }
     }
 
-    // MODIFICADO: para retornar o tipo encontrado.
     private TokenType tipo() {
         if (verificar(TokenType.INTEIRO)) {
             consumir(TokenType.INTEIRO);
@@ -148,8 +153,6 @@ public class Parser {
     }
 
     private void decl_sub_opcional() {
-        // A gramática original permite múltiplas declarações separadas por ';',
-        // então mantemos o loop aqui.
         while (verificar(TokenType.PROCEDIMENTO) || verificar(TokenType.FUNCAO)) {
             decl_sub_rotina();
             consumir(TokenType.PONTO_E_VIRGULA);
@@ -161,8 +164,6 @@ public class Parser {
             decl_proc();
         } else if (verificar(TokenType.FUNCAO)) {
             decl_func();
-        } else {
-            // Este else não deve ser alcançado devido à condição do loop em decl_sub_opcional
         }
     }
 
@@ -171,26 +172,63 @@ public class Parser {
         Token idProc = tokenAtual;
         consumir(TokenType.ID);
 
-        // ANÁLISE SEMÂNTICA: Insere o nome do procedimento no escopo atual ANTES de abrir um novo.
-        try {
-            tabelaDeSimbolos.inserir(new Simbolo(idProc.lexeme, TipoSimbolo.PROCEDIMENTO, null));
-        } catch (RuntimeException e) {
-            throw new ErroSemanticoException(e.getMessage(), idProc);
-        }
+        // 1. Insere o nome do procedimento no escopo PAI (o que está ativo agora).
+        tabelaDeSimbolos.inserir(new Simbolo(idProc.lexeme, TipoSimbolo.PROCEDIMENTO, null));
+        gerador.gerar(idProc.lexeme + ":", null, null, null);
 
-        // ANÁLISE SEMÂNTICA: Abre um novo escopo para os parâmetros e variáveis locais do procedimento.
+        // 2. ABRE o novo escopo para parâmetros e variáveis locais.
         tabelaDeSimbolos.abrirEscopo();
 
-        parametros_formais_opc();
+        // 3. Captura os tokens dos parâmetros em uma lista.
+        //    Esta é a correção principal.
+        List<Token> tokensDosParametros = new ArrayList<>();
+        parametros_formais_opc(tokensDosParametros); // Passa a lista como argumento
+
+        // 4. AGORA, processa semanticamente os tokens dos parâmetros que foram capturados.
+        if (!tokensDosParametros.isEmpty()) {
+            int i = 0;
+            while (i < tokensDosParametros.size()) {
+                List<Token> nomesParams = new ArrayList<>();
+                while (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.ID) {
+                    nomesParams.add(tokensDosParametros.get(i));
+                    i++;
+                    if (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.VIRGULA) {
+                        i++; // Pula a vírgula
+                    }
+                }
+
+                if (i >= tokensDosParametros.size() || tokensDosParametros.get(i).type != TokenType.DOIS_PONTOS) {
+                    throw new ErroSintaticoException("Esperado ':' na declaração de parâmetros de procedimento.", idProc);
+                }
+                i++; // Pula os dois pontos
+
+                if (i >= tokensDosParametros.size() || !(tokensDosParametros.get(i).type == TokenType.INTEIRO || tokensDosParametros.get(i).type == TokenType.BOOLEANO)) {
+                    throw new ErroSintaticoException("Esperado tipo para os parâmetros de procedimento.", idProc);
+                }
+                TokenType tipoParams = tokensDosParametros.get(i).type;
+                i++;
+
+                for (Token param : nomesParams) {
+                    tabelaDeSimbolos.inserir(new Simbolo(param.lexeme, TipoSimbolo.VARIAVEL, tipoParams));
+                }
+
+                if (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.PONTO_E_VIRGULA) {
+                    i++; // Pula o ponto e vírgula para o próximo conjunto de parâmetros
+                }
+            }
+        }
+
         consumir(TokenType.PONTO_E_VIRGULA);
 
         CategoriaSubRotina estadoAnterior = this.subRotinaAtual;
         this.subRotinaAtual = CategoriaSubRotina.PROCEDIMENTO;
 
+        // 5. Analisa o bloco de comandos.
         bloco();
 
         this.subRotinaAtual = estadoAnterior;
-        // ANÁLISE SEMÂNTICA: Fecha o escopo do procedimento.
+
+        // 6. Fecha o escopo da sub-rotina.
         tabelaDeSimbolos.fecharEscopo();
     }
 
@@ -198,23 +236,60 @@ public class Parser {
         consumir(TokenType.FUNCAO);
         Token idFunc = tokenAtual;
         consumir(TokenType.ID);
-        parametros_formais_opc(); // Parâmetros serão inseridos no novo escopo
+
+        // 1. Captura os tokens dos parâmetros semântica.
+        List<Token> tokensDosParametros = new ArrayList<>();
+        parametros_formais_opc(tokensDosParametros); // O método agora preenche a lista
+
         consumir(TokenType.DOIS_PONTOS);
         TokenType tipoRetorno = tipo();
 
-        // ANÁLISE SEMÂNTICA: Cria o símbolo da função e o insere no escopo PAI.
+        // 2. Com todas as informações da assinatura da função, insere o símbolo no escopo PAI (atual).
         Simbolo simboloFuncao = new Simbolo(idFunc.lexeme, TipoSimbolo.FUNCAO, tipoRetorno);
-        try {
-            tabelaDeSimbolos.inserir(simboloFuncao);
-        } catch (RuntimeException e) {
-            throw new ErroSemanticoException(e.getMessage(), idFunc);
-        }
+        tabelaDeSimbolos.inserir(simboloFuncao);
+        gerador.gerar(idFunc.lexeme + ":", null, null, null); // Gera o rótulo da função
 
-        // ANÁLISE SEMÂNTICA: Abre um novo escopo para a função.
+        // 3. ABRE o novo escopo para a função.
         tabelaDeSimbolos.abrirEscopo();
+
+        // 4. AGORA, processa semanticamente os tokens dos parâmetros que capturamos antes.
+        if (!tokensDosParametros.isEmpty()) {
+            // Simula um mini-parser para os parâmetros, usando a lista de tokens.
+            int i = 0;
+            while (i < tokensDosParametros.size()) {
+                List<Token> nomesParams = new ArrayList<>();
+                while (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.ID) {
+                    nomesParams.add(tokensDosParametros.get(i));
+                    i++;
+                    if (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.VIRGULA) {
+                        i++; // Pula a vírgula
+                    }
+                }
+
+                if (i >= tokensDosParametros.size() || tokensDosParametros.get(i).type != TokenType.DOIS_PONTOS) {
+                    throw new ErroSintaticoException("Esperado ':' na declaração de parâmetros.", idFunc);
+                }
+                i++; // Pula os dois pontos
+
+                if (i >= tokensDosParametros.size() || !(tokensDosParametros.get(i).type == TokenType.INTEIRO || tokensDosParametros.get(i).type == TokenType.BOOLEANO)) {
+                    throw new ErroSintaticoException("Esperado tipo para os parâmetros.", idFunc);
+                }
+                TokenType tipoParams = tokensDosParametros.get(i).type;
+                i++;
+
+                for (Token param : nomesParams) {
+                    tabelaDeSimbolos.inserir(new Simbolo(param.lexeme, TipoSimbolo.VARIAVEL, tipoParams));
+                }
+
+                if (i < tokensDosParametros.size() && tokensDosParametros.get(i).type == TokenType.PONTO_E_VIRGULA) {
+                    i++; // Pula o ponto e vírgula para o próximo conjunto de parâmetros
+                }
+            }
+        }
 
         consumir(TokenType.PONTO_E_VIRGULA);
 
+        // Define o estado atual para análise do bloco
         CategoriaSubRotina estadoAnteriorSub = this.subRotinaAtual;
         Simbolo estadoAnteriorFunc = this.funcaoAtual;
         this.subRotinaAtual = CategoriaSubRotina.FUNCAO;
@@ -225,14 +300,18 @@ public class Parser {
         this.subRotinaAtual = estadoAnteriorSub;
         this.funcaoAtual = estadoAnteriorFunc;
 
-        // ANÁLISE SEMÂNTICA: Fecha o escopo da função.
         tabelaDeSimbolos.fecharEscopo();
     }
 
-    private void parametros_formais_opc() {
+    private void parametros_formais_opc(List<Token> listaDeParametros) {
         if (verificar(TokenType.ABRE_PAREN)) {
             consumir(TokenType.ABRE_PAREN);
-            lista_parametros();
+            if (verificar(TokenType.ID)) {
+                while (!verificar(TokenType.FECHA_PAREN)) {
+                    listaDeParametros.add(tokenAtual);
+                    avancarToken();
+                }
+            }
             consumir(TokenType.FECHA_PAREN);
         }
     }
@@ -252,7 +331,6 @@ public class Parser {
     }
 
     private void parametro() {
-        // Reutiliza a lógica de declaração de variáveis para os parâmetros
         decl_var();
     }
 
@@ -298,159 +376,182 @@ public class Parser {
                 throw new ErroSemanticoException("Comando 'break' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
             }
             consumir(TokenType.BREAK);
+            // GERAÇÃO DE CÓDIGO (assumindo que os rótulos de laço são gerenciados em um nível superior)
+            // gerador.gerar("goto", null, null, rotuloFimDoLacoAtual);
         } else if (verificar(TokenType.CONTINUE)) {
             if (!this.dentroDeLaco) {
                 throw new ErroSemanticoException("Comando 'continue' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
             }
             consumir(TokenType.CONTINUE);
-        } else {
-            // Permite corpo de comando vazio antes do 'fim'
-            if (!verificar(TokenType.FIM)) {
-                throw new ErroSintaticoException("Esperado um comando válido (atribuição, se, enquanto, etc.)", tokenAtual);
-            }
+            // GERAÇÃO DE CÓDIGO
+            // gerador.gerar("goto", null, null, rotuloInicioDoLacoAtual);
+        } else if (!verificar(TokenType.FIM)) {
+            throw new ErroSintaticoException("Esperado um comando válido", tokenAtual);
         }
     }
 
     private void comando_atr_chamada() {
         Token id = tokenAtual;
         consumir(TokenType.ID);
-
-        // ANÁLISE SEMÂNTICA: Busca o identificador na tabela para ver se ele foi declarado.
+        // ANÁLISE SEMÂNTICA
         Simbolo simbolo = tabelaDeSimbolos.buscar(id.lexeme);
         if (simbolo == null) {
             throw new ErroSemanticoException("Identificador '" + id.lexeme + "' não foi declarado.", id);
         }
 
-        atr_ou_chamada_proc(simbolo, id);
-    }
-
-    // ANÁLISE SEMÂNTICA: Este método agora recebe o símbolo encontrado para fazer as verificações.
-    private void atr_ou_chamada_proc(Simbolo simbolo, Token token) {
-        if (verificar(TokenType.ATRIBUICAO)) { // Atribuição: id := expressao
-            // VERIFICAÇÃO DE CATEGORIA: Só se pode atribuir a variáveis ou ao nome da própria função (para retorno).
-            boolean atribuicaoValida = simbolo.categoria == TipoSimbolo.VARIAVEL ||
-                    (funcaoAtual != null && simbolo.nome.equals(funcaoAtual.nome));
-
-            if (!atribuicaoValida) {
-                throw new ErroSemanticoException("Atribuição inválida. '" + simbolo.nome + "' não é uma variável ou o nome da função atual.", token);
-            }
-
+        if (verificar(TokenType.ATRIBUICAO)) { // Atribuição
             consumir(TokenType.ATRIBUICAO);
-            TokenType tipoExpressao = expressao();
-
-            // VERIFICAÇÃO DE TIPO: O tipo da expressão deve ser compatível com o tipo da variável/função.
-            if (simbolo.tipo != tipoExpressao) {
-                throw new ErroSemanticoException("Tipos incompatíveis. Não é possível atribuir um '" + tipoExpressao + "' a um '" + simbolo.tipo + "'.", token);
+            ResultadoExpressao resExpr = expressao();
+            // ANÁLISE SEMÂNTICA
+            if (simbolo.tipo != resExpr.tipo) {
+                throw new ErroSemanticoException("Tipos incompatíveis para atribuição. Esperado '" + simbolo.tipo + "' mas encontrado '" + resExpr.tipo + "'.", id);
             }
-        } else { // Chamada de procedimento: id(...) ou id
-            // VERIFICAÇÃO DE CATEGORIA: Apenas procedimentos podem ser chamados desta forma.
-            if (simbolo.categoria != TipoSimbolo.PROCEDIMENTO) {
-                throw new ErroSemanticoException("'" + simbolo.nome + "' não é um procedimento. Apenas procedimentos podem ser chamados sem atribuição.", token);
-            }
+            // GERAÇÃO DE CÓDIGO
+            gerador.gerar(":=", resExpr.nome, null, id.lexeme);
+        } else { // Chamada de procedimento ou função
             argumentos_reais_opc();
+            if(simbolo.categoria == TipoSimbolo.PROCEDIMENTO) {
+                // GERAÇÃO DE CÓDIGO
+                gerador.gerar("call", id.lexeme, null, null);
+            }
+            // Se for uma função chamada como um procedimento, o valor de retorno é descartado.
         }
     }
-
 
     private void comando_condicional() {
         consumir(TokenType.SE);
-        // ANÁLISE SEMÂNTICA: A expressão em um 'se' deve ser booleana.
-        TokenType tipoExpr = expressao();
-        if (tipoExpr != TokenType.BOOLEANO) {
-            throw new ErroSemanticoException("A expressão da condição 'se' deve ser do tipo booleano, mas foi '" + tipoExpr + "'.", tokenAtual);
+        // GERAÇÃO DE CÓDIGO
+        String rotuloSenao = gerador.novoRotulo();
+        String rotuloFimSe = gerador.novoRotulo();
+
+        ResultadoExpressao resCond = expressao();
+        // ANÁLISE SEMÂNTICA
+        if (resCond.tipo != TokenType.BOOLEANO) {
+            throw new ErroSemanticoException("Condição do 'se' deve ser booleana.", tokenAtual);
         }
+        // GERAÇÃO DE CÓDIGO
+        gerador.gerar("if_false", resCond.nome, "goto", rotuloSenao);
+
         consumir(TokenType.ENTAO);
         comando();
-        senao_opcional();
-    }
 
-    private void senao_opcional() {
         if (verificar(TokenType.SENAO)) {
+            // GERAÇÃO DE CÓDIGO
+            gerador.gerar("goto", null, null, rotuloFimSe);
+            gerador.gerar(rotuloSenao + ":", null, null, null);
             consumir(TokenType.SENAO);
             comando();
+            gerador.gerar(rotuloFimSe + ":", null, null, null);
+        } else {
+            gerador.gerar(rotuloSenao + ":", null, null, null);
         }
     }
 
     private void comando_enquanto() {
         consumir(TokenType.ENQUANTO);
-        // ANÁLISE SEMÂNTICA: A expressão em um 'enquanto' deve ser booleana.
-        TokenType tipoExpr = expressao();
-        if (tipoExpr != TokenType.BOOLEANO) {
-            throw new ErroSemanticoException("A expressão da condição 'enquanto' deve ser do tipo booleano, mas foi '" + tipoExpr + "'.", tokenAtual);
+        // GERAÇÃO DE CÓDIGO
+        String rotuloInicio = gerador.novoRotulo();
+        String rotuloFim = gerador.novoRotulo();
+        gerador.gerar(rotuloInicio + ":", null, null, null);
+
+        ResultadoExpressao resCond = expressao();
+        // ANÁLISE SEMÂNTICA
+        if (resCond.tipo != TokenType.BOOLEANO) {
+            throw new ErroSemanticoException("Condição do 'enquanto' deve ser booleana.", tokenAtual);
         }
+        // GERAÇÃO DE CÓDIGO
+        gerador.gerar("if_false", resCond.nome, "goto", rotuloFim);
+
         consumir(TokenType.FACA);
 
         boolean estadoAnterior = this.dentroDeLaco;
         this.dentroDeLaco = true;
         comando();
         this.dentroDeLaco = estadoAnterior;
+
+        // GERAÇÃO DE CÓDIGO
+        gerador.gerar("goto", null, null, rotuloInicio);
+        gerador.gerar(rotuloFim + ":", null, null, null);
     }
 
     private void comando_escrita() {
         consumir(TokenType.ESCREVA);
         consumir(TokenType.ABRE_PAREN);
-        expressao(); // Pode escrever qualquer tipo, então não há verificação aqui.
+        ResultadoExpressao resExpr = expressao();
+        // GERAÇÃO DE CÓDIGO
+        gerador.gerar("escreva", resExpr.nome, null, null);
         consumir(TokenType.FECHA_PAREN);
     }
 
     private void comando_retorno() {
-        // VERIFICAÇÃO DE CONTEXTO: 'retorno' só é válido dentro de uma função.
+        // ANÁLISE SEMÂNTICA
         if (this.subRotinaAtual != CategoriaSubRotina.FUNCAO) {
             throw new ErroSemanticoException("Comando 'retorno' só pode ser usado dentro de uma função.", tokenAtual);
         }
         consumir(TokenType.RETORNO);
-        TokenType tipoExpressao = expressao();
-
-        // VERIFICAÇÃO DE TIPO: O tipo da expressão de retorno deve ser o mesmo do tipo de retorno da função.
-        if (funcaoAtual.tipo != tipoExpressao) {
-            throw new ErroSemanticoException("Tipo de retorno incompatível. A função '" + funcaoAtual.nome + "' espera '" + funcaoAtual.tipo + "', mas a expressão retornou '" + tipoExpressao + "'.", tokenAtual);
+        ResultadoExpressao resExpr = expressao();
+        // ANÁLISE SEMÂNTICA
+        if (funcaoAtual.tipo != resExpr.tipo) {
+            throw new ErroSemanticoException("Tipo de retorno incompatível.", tokenAtual);
         }
+        // GERAÇÃO DE CÓDIGO
+        gerador.gerar("retorno", resExpr.nome, null, null);
     }
 
-    // MODIFICADO: Os métodos de expressão agora retornam um TokenType para a checagem de tipos.
-    private TokenType expressao() {
-        TokenType tipoEsq = expressao_simples();
-        // Se houver um operador relacional, o resultado da expressão é sempre booleano.
+    // Classe auxiliar para retornar TIPO (semântica) e NOME (geração de código)
+    private static class ResultadoExpressao {
+        final String nome;
+        final TokenType tipo;
+        ResultadoExpressao(String nome, TokenType tipo) { this.nome = nome; this.tipo = tipo; }
+    }
+
+    private ResultadoExpressao expressao() {
+        ResultadoExpressao resEsq = expressao_simples();
         if (verificar(TokenType.IGUAL) || verificar(TokenType.DIFERENTE) || verificar(TokenType.MENOR) ||
                 verificar(TokenType.MENOR_IGUAL) || verificar(TokenType.MAIOR) || verificar(TokenType.MAIOR_IGUAL)) {
-            op_rel();
-            TokenType tipoDir = expressao_simples();
-            // ANÁLISE SEMÂNTICA: Operadores relacionais só podem comparar tipos iguais (ambos inteiros).
-            if (tipoEsq != TokenType.INTEIRO || tipoDir != TokenType.INTEIRO) {
-                throw new ErroSemanticoException("Operadores relacionais (<, >, =, etc) só podem ser usados entre expressões do tipo inteiro.", tokenAtual);
+            Token op = tokenAtual;
+            avancarToken();
+            ResultadoExpressao resDir = expressao_simples();
+
+            // ANÁLISE SEMÂNTICA
+            if (resEsq.tipo != TokenType.INTEIRO || resDir.tipo != TokenType.INTEIRO) {
+                throw new ErroSemanticoException("Operadores relacionais exigem operandos inteiros.", op);
             }
-            return TokenType.BOOLEANO; // O resultado de uma comparação é sempre booleano.
+
+            // GERAÇÃO DE CÓDIGO
+            String temp = gerador.novoTemp();
+            gerador.gerar(op.lexeme, resEsq.nome, resDir.nome, temp);
+            return new ResultadoExpressao(temp, TokenType.BOOLEANO);
         }
-        return tipoEsq; // Se não houver operador relacional, o tipo é o da expressão simples.
+        return resEsq;
     }
 
-    private void op_rel() {
-        avancarToken();
-    }
+    private void op_rel() { /* Deprecated by advancing token directly */ }
 
-    private TokenType expressao_simples() {
-        sinal_opcional();
-        TokenType tipoAcumulado = termo();
-
+    private ResultadoExpressao expressao_simples() {
+        sinal_opcional(); // Lógica de sinal unário precisa ser implementada na geração de código
+        ResultadoExpressao resAcumulado = termo();
         while (verificar(TokenType.MAIS) || verificar(TokenType.MENOS) || verificar(TokenType.OU)) {
             Token op = tokenAtual;
-            op_soma();
-            TokenType tipoDir = termo();
+            avancarToken();
+            ResultadoExpressao resDir = termo();
 
-            // ANÁLISE SEMÂNTICA: Checagem de tipo para operadores aditivos.
+            // ANÁLISE SEMÂNTICA
+            TokenType tipoResultante;
             if (op.type == TokenType.OU) {
-                if (tipoAcumulado != TokenType.BOOLEANO || tipoDir != TokenType.BOOLEANO) {
-                    throw new ErroSemanticoException("O operador 'ou' só pode ser usado entre expressões booleanas.", op);
-                }
-                tipoAcumulado = TokenType.BOOLEANO;
-            } else { // MAIS ou MENOS
-                if (tipoAcumulado != TokenType.INTEIRO || tipoDir != TokenType.INTEIRO) {
-                    throw new ErroSemanticoException("Os operadores '+' e '-' só podem ser usados entre expressões inteiras.", op);
-                }
-                tipoAcumulado = TokenType.INTEIRO;
+                if (resAcumulado.tipo != TokenType.BOOLEANO || resDir.tipo != TokenType.BOOLEANO) throw new ErroSemanticoException("Operador 'ou' exige operandos booleanos.", op);
+                tipoResultante = TokenType.BOOLEANO;
+            } else {
+                if (resAcumulado.tipo != TokenType.INTEIRO || resDir.tipo != TokenType.INTEIRO) throw new ErroSemanticoException("Operadores '+' e '-' exigem operandos inteiros.", op);
+                tipoResultante = TokenType.INTEIRO;
             }
+
+            // GERAÇÃO DE CÓDIGO
+            String temp = gerador.novoTemp();
+            gerador.gerar(op.lexeme, resAcumulado.nome, resDir.nome, temp);
+            resAcumulado = new ResultadoExpressao(temp, tipoResultante);
         }
-        return tipoAcumulado;
+        return resAcumulado;
     }
 
     private void sinal_opcional() {
@@ -459,83 +560,81 @@ public class Parser {
         }
     }
 
-    private void op_soma() {
-        avancarToken();
-    }
+    private void op_soma() { /* Deprecated by advancing token directly */ }
 
-    private TokenType termo() {
-        TokenType tipoAcumulado = fator();
+    private ResultadoExpressao termo() {
+        ResultadoExpressao resAcumulado = fator();
         while (verificar(TokenType.MULT) || verificar(TokenType.DIVISAO) || verificar(TokenType.E)) {
             Token op = tokenAtual;
-            op_mult();
-            TokenType tipoDir = fator();
+            avancarToken();
+            ResultadoExpressao resDir = fator();
 
-            // ANÁLISE SEMÂNTICA: Checagem de tipo para operadores multiplicativos.
+            // ANÁLISE SEMÂNTICA
+            TokenType tipoResultante;
             if (op.type == TokenType.E) {
-                if (tipoAcumulado != TokenType.BOOLEANO || tipoDir != TokenType.BOOLEANO) {
-                    throw new ErroSemanticoException("O operador 'e' só pode ser usado entre expressões booleanas.", op);
-                }
-                tipoAcumulado = TokenType.BOOLEANO;
-            } else { // MULT ou DIVISAO
-                if (tipoAcumulado != TokenType.INTEIRO || tipoDir != TokenType.INTEIRO) {
-                    throw new ErroSemanticoException("Os operadores '*' e '/' só podem ser usados entre expressões inteiras.", op);
-                }
-                tipoAcumulado = TokenType.INTEIRO;
+                if (resAcumulado.tipo != TokenType.BOOLEANO || resDir.tipo != TokenType.BOOLEANO) throw new ErroSemanticoException("Operador 'e' exige operandos booleanos.", op);
+                tipoResultante = TokenType.BOOLEANO;
+            } else {
+                if (resAcumulado.tipo != TokenType.INTEIRO || resDir.tipo != TokenType.INTEIRO) throw new ErroSemanticoException("Operadores '*' e '/' exigem operandos inteiros.", op);
+                tipoResultante = TokenType.INTEIRO;
             }
+
+            // GERAÇÃO DE CÓDIGO
+            String temp = gerador.novoTemp();
+            gerador.gerar(op.lexeme, resAcumulado.nome, resDir.nome, temp);
+            resAcumulado = new ResultadoExpressao(temp, tipoResultante);
         }
-        return tipoAcumulado;
+        return resAcumulado;
     }
 
-    private void op_mult() {
-        avancarToken();
-    }
+    private void op_mult() { /* Deprecated by advancing token directly */ }
 
-    private TokenType fator() {
+    private ResultadoExpressao fator() {
+        Token token = tokenAtual;
         if (verificar(TokenType.ID)) {
-            Token id = tokenAtual;
-            consumir(TokenType.ID);
-
-            // ANÁLISE SEMÂNTICA: Busca o símbolo para determinar se é uma variável ou chamada de função.
-            Simbolo simbolo = tabelaDeSimbolos.buscar(id.lexeme);
-            if (simbolo == null) {
-                throw new ErroSemanticoException("Identificador '" + id.lexeme + "' não foi declarado.", id);
-            }
+            avancarToken();
+            Simbolo s = tabelaDeSimbolos.buscar(token.lexeme);
+            if (s == null) throw new ErroSemanticoException("Identificador não declarado: " + token.lexeme, token);
 
             if (verificar(TokenType.ABRE_PAREN)) { // É uma chamada de função
-                if (simbolo.categoria != TipoSimbolo.FUNCAO) {
-                    throw new ErroSemanticoException("'" + id.lexeme + "' não é uma função e não pode ser chamado com argumentos.", id);
+                if (s.categoria != TipoSimbolo.FUNCAO) {
+                    throw new ErroSemanticoException("'" + s.nome + "' não é uma função.", token);
                 }
                 argumentos_reais_opc();
-                return simbolo.tipo; // O tipo do fator é o tipo de retorno da função.
-            } else { // É uma variável
-                if (simbolo.categoria != TipoSimbolo.VARIAVEL) {
-                    throw new ErroSemanticoException("'" + id.lexeme + "' não é uma variável. Esperado uso de variável em expressão.", id);
-                }
-                return simbolo.tipo; // O tipo do fator é o tipo da variável.
+                String temp = gerador.novoTemp();
+                // GERAÇÃO DE CÓDIGO
+                gerador.gerar("call", s.nome, null, temp);
+                return new ResultadoExpressao(temp, s.tipo);
             }
+
+            return new ResultadoExpressao(token.lexeme, s.tipo);
+
         } else if (verificar(TokenType.NUMERO)) {
-            consumir(TokenType.NUMERO);
-            return TokenType.INTEIRO;
-        } else if (verificar(TokenType.ABRE_PAREN)) {
-            consumir(TokenType.ABRE_PAREN);
-            TokenType tipo = expressao();
-            consumir(TokenType.FECHA_PAREN);
-            return tipo;
+            avancarToken();
+            return new ResultadoExpressao(token.lexeme, TokenType.INTEIRO);
         } else if (verificar(TokenType.VERDADEIRO) || verificar(TokenType.FALSO)) {
             avancarToken();
-            return TokenType.BOOLEANO;
+            return new ResultadoExpressao(token.lexeme, TokenType.BOOLEANO);
+        } else if (verificar(TokenType.ABRE_PAREN)) {
+            consumir(TokenType.ABRE_PAREN);
+            ResultadoExpressao resultado = expressao();
+            consumir(TokenType.FECHA_PAREN);
+            return resultado;
         } else if (verificar(TokenType.NAO)) {
-            consumir(TokenType.NAO);
-            TokenType tipo = fator();
-            // ANÁLISE SEMÂNTICA: 'nao' só pode ser aplicado a booleanos.
-            if (tipo != TokenType.BOOLEANO) {
-                throw new ErroSemanticoException("O operador 'nao' só pode ser aplicado a uma expressão booleana.", tokenAtual);
+            avancarToken();
+            ResultadoExpressao resFator = fator();
+            if (resFator.tipo != TokenType.BOOLEANO) {
+                throw new ErroSemanticoException("Operador 'nao' só pode ser aplicado a booleanos.", token);
             }
-            return TokenType.BOOLEANO;
+            String temp = gerador.novoTemp();
+            gerador.gerar("nao", resFator.nome, null, temp);
+            return new ResultadoExpressao(temp, TokenType.BOOLEANO);
         } else {
-            throw new ErroSintaticoException("Esperado um fator (ID, número, expressão entre parênteses, etc.)", tokenAtual);
+            throw new ErroSintaticoException("Fator inesperado", token);
         }
     }
+
+    private void fator_cont() { /* Merged into fator() */ }
 
     private void argumentos_reais_opc() {
         if (verificar(TokenType.ABRE_PAREN)) {
@@ -547,15 +646,21 @@ public class Parser {
 
     private void lista_argumentos() {
         if (!verificar(TokenType.FECHA_PAREN)) {
-            expressao();
+            ResultadoExpressao resExpr = expressao();
+            // GERAÇÃO DE CÓDIGO (para 'param')
+            gerador.gerar("param", resExpr.nome, null, null);
             lista_argumentos_rest();
         }
     }
 
+
+
     private void lista_argumentos_rest() {
         while (verificar(TokenType.VIRGULA)) {
             consumir(TokenType.VIRGULA);
-            expressao();
+            ResultadoExpressao resExpr = expressao();
+            // GERAÇÃO DE CÓDIGO (para 'param')
+            gerador.gerar("param", resExpr.nome, null, null);
         }
     }
 }
