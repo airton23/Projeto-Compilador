@@ -1,49 +1,17 @@
 programa TesteFinalCompleto;
 
 var
-  numero_base, resultado_global: inteiro;
-  loop_ativo: booleano;
-
-funcao Dobro(n: inteiro): inteiro;
-  var
-    resultado_local: inteiro;
-  inicio
-    resultado_local := n * 2;
-    retorno resultado_local;
-  fim;
-
-procedimento ContagemAteLimite(limite: inteiro);
-  var
-    contador: inteiro;
-  inicio
-    contador := 1;
-    enquanto contador <= limite faca
-    inicio
-      escreva(contador);
-
-      se (contador * 2) > 10 entao
-        loop_ativo := falso;
-
-      contador := contador + 1;
-    fim;
-  fim;
+  contador, maximo: inteiro;
 
 inicio
-  numero_base := 5;
-  numero_base := 7;
-  loop_ativo := verdadeiro;
+  maximo := 5;
 
-  escreva(100);
-
-  ContagemAteLimite(numero_base);
-
-  resultado_global := Dobro(numero_base);
-  escreva(resultado_global);
-
-  se (resultado_global > 9) e loop_ativo entao
-    escreva(1)
-  senao
-    escreva(0);
-
-  escreva(200);
+    enquanto contador < maximo faca
+    inicio
+        contador := contador + 1;
+        se (contador * 2) = 4 entao
+        inicio
+            break;
+        fim;
+    fim;
 fim.

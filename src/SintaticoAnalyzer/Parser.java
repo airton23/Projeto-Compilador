@@ -10,6 +10,8 @@ import SemanticsAnalyzer.TipoSimbolo;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 public class Parser {
 
@@ -27,6 +29,8 @@ public class Parser {
     private enum CategoriaSubRotina { NENHUMA, FUNCAO, PROCEDIMENTO }
     private CategoriaSubRotina subRotinaAtual = CategoriaSubRotina.NENHUMA;
     private Simbolo funcaoAtual = null;
+    private final Deque<String> pilhaInicioLaco = new ArrayDeque<>();
+    private final Deque<String> pilhaFimLaco    = new ArrayDeque<>();
 
     /**
      * Construtor do Parser.
@@ -372,19 +376,18 @@ public class Parser {
         } else if (verificar(TokenType.RETORNO)) {
             comando_retorno();
         } else if (verificar(TokenType.BREAK)) {
-            if (!this.dentroDeLaco) {
-                throw new ErroSemanticoException("Comando 'break' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
+            if (pilhaFimLaco.isEmpty()) {
+                throw new ErroSemanticoException("'break' fora de um laço 'enquanto'", tokenAtual);
             }
             consumir(TokenType.BREAK);
-            // GERAÇÃO DE CÓDIGO (assumindo que os rótulos de laço são gerenciados em um nível superior)
-            // gerador.gerar("goto", null, null, rotuloFimDoLacoAtual);
-        } else if (verificar(TokenType.CONTINUE)) {
-            if (!this.dentroDeLaco) {
-                throw new ErroSemanticoException("Comando 'continue' só pode ser usado dentro de um laço 'enquanto'", tokenAtual);
+            gerador.gerar("goto", null, null, pilhaFimLaco.peek());
+        }
+        else if (verificar(TokenType.CONTINUE)) {
+            if (pilhaInicioLaco.isEmpty()) {
+                throw new ErroSemanticoException("'continue' fora de um laço 'enquanto'", tokenAtual);
             }
             consumir(TokenType.CONTINUE);
-            // GERAÇÃO DE CÓDIGO
-            // gerador.gerar("goto", null, null, rotuloInicioDoLacoAtual);
+            gerador.gerar("goto", null, null, pilhaInicioLaco.peek());
         } else if (!verificar(TokenType.FIM)) {
             throw new ErroSintaticoException("Esperado um comando válido", tokenAtual);
         }
@@ -449,28 +452,40 @@ public class Parser {
 
     private void comando_enquanto() {
         consumir(TokenType.ENQUANTO);
-        // GERAÇÃO DE CÓDIGO
+
+        // Rótulos do laço
         String rotuloInicio = gerador.novoRotulo();
-        String rotuloFim = gerador.novoRotulo();
+        String rotuloFim    = gerador.novoRotulo();
+
+        // label de teste
         gerador.gerar(rotuloInicio + ":", null, null, null);
 
+        // condição
         ResultadoExpressao resCond = expressao();
-        // ANÁLISE SEMÂNTICA
         if (resCond.tipo != TokenType.BOOLEANO) {
             throw new ErroSemanticoException("Condição do 'enquanto' deve ser booleana.", tokenAtual);
         }
-        // GERAÇÃO DE CÓDIGO
-        gerador.gerar("if_false", resCond.nome, "goto", rotuloFim);
+        // if_false cond goto Lfim
+        gerador.gerar("if_false", resCond.nome, null, rotuloFim);
 
         consumir(TokenType.FACA);
 
+        // Entramos no corpo: habilita break/continue para este laço
+        pilhaInicioLaco.push(rotuloInicio);
+        pilhaFimLaco.push(rotuloFim);
         boolean estadoAnterior = this.dentroDeLaco;
         this.dentroDeLaco = true;
-        comando();
-        this.dentroDeLaco = estadoAnterior;
 
-        // GERAÇÃO DE CÓDIGO
+        comando(); // seu "bloco" ou "comando" conforme a gramática
+
+        // Voltamos ao estado anterior
+        this.dentroDeLaco = estadoAnterior;
+        pilhaInicioLaco.pop();
+        pilhaFimLaco.pop();
+
+        // volta para testar de novo
         gerador.gerar("goto", null, null, rotuloInicio);
+        // saída do laço
         gerador.gerar(rotuloFim + ":", null, null, null);
     }
 

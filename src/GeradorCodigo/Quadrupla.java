@@ -15,19 +15,32 @@ public class Quadrupla {
 
     @Override
     public String toString() {
-        if (operador.endsWith(":")) { // É um rótulo (label)
-            return String.format("%-10s", operador);
+        if (operador != null && operador.endsWith(":")) {
+            return String.format("%-10s", operador);           // rótulo
         }
-        if (operador.equals("goto") || operador.startsWith("if")) {
-            return String.format("%-10s %-10s %-10s %-10s", operador, arg1, arg2, resultado);
+        if (":=".equals(operador)) {
+            return String.format("%-10s := %-10s", resultado, arg1); // cópia/atr
         }
-        if (arg2 == null) { // Operação unária ou cópia
-            if (operador.equals("escreva") || operador.equals("retorno")) {
+        if ("goto".equals(operador)) {
+            return String.format("%-10s %-10s", "goto", resultado);  // goto Lk
+        }
+        if ("if_false".equals(operador)) {
+            return String.format("%-10s %-10s %-10s %-10s", "if_false", arg1, "goto", resultado);
+        }
+        if ("param".equals(operador)) {
+            return String.format("%-10s %-10s", "param", arg1);
+        }
+        if ("call".equals(operador)) {
+            return (resultado != null)
+                    ? String.format("%-10s := %-10s %-10s", resultado, "call", arg1)
+                    : String.format("%-10s %-10s", "call", arg1);
+        }
+        if (arg2 == null) { // unária (ex.: nao) ou I/O/retorno
+            if ("escreva".equals(operador) || "retorno".equals(operador)) {
                 return String.format("%-10s %-10s", operador, arg1);
             }
             return String.format("%-10s := %-10s %-10s", resultado, operador, arg1);
         }
-        // Operação binária
-        return String.format("%-10s := %-10s %-10s %-10s", resultado, arg1, operador, arg2);
+        return String.format("%-10s := %-10s %-10s %-10s", resultado, arg1, operador, arg2); // binária
     }
 }

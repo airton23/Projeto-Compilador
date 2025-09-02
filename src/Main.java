@@ -1,4 +1,3 @@
-import GeradorCodigo.GeradorDeCodigoFinal; // Importar a nova classe
 import LexicalAnalyzer.LexicalAnalyzer;
 import SintaticoAnalyzer.ErroSemanticoException;
 import SintaticoAnalyzer.ErroSintaticoException;
@@ -21,14 +20,7 @@ public class Main {
             parser.parse();
             System.out.println("Análise concluída com sucesso!");
 
-            System.out.println("\n--- CÓDIGO INTERMEDIÁRIO GERADO ---");
             parser.getGerador().imprimirCodigo();
-
-            // Fase de Geração de Código Final
-            GeradorDeCodigoFinal geradorFinal = new GeradorDeCodigoFinal(parser.getGerador().getQuadruplas());
-            geradorFinal.gerarCodigo();
-            geradorFinal.imprimirCodigo();
-
 
         } catch (IOException e) {
             System.err.println("Erro ao ler o arquivo: " + e.getMessage());
