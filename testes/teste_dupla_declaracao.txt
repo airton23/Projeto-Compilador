@@ -1,0 +1,31 @@
+programa TesteCorreto;
+var
+  contador, limite: inteiro;
+  ativo: booleano;
+
+procedimento ImprimirContagem(limite_local: inteiro);
+var
+  teste: inteiro;
+inicio
+  teste := 0;
+  enquanto contador < limite_local faca
+  inicio
+    escreva(contador);
+    contador := contador + 1;
+  fim;
+fim;
+
+funcao PegaBooleano(): booleano;
+inicio
+  retorno verdadeiro;
+fim;
+
+inicio
+  limite := 10;
+  contador := 0;
+  ativo := PegaBooleano();
+
+  ImprimirContagem(limite);
+
+  escreva(0);
+fim.

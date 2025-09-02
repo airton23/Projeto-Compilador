@@ -1,38 +1,62 @@
-programa TesteCompleto;
+programa TesteEscopo;
 
 var
-  contador, limite: inteiro;
-  ativo: booleano;
+  global1: inteiro;
+  x, z: inteiro;
+  local: booleano;
+  g: inteiro;
 
-procedimento ImprimirContagem(limite_local: inteiro);
-inicio
-  enquanto contador < limite faca
+funcao modificaGlobal(x_param: inteiro): inteiro;
+  (* CORREÇÃO: Variáveis movidas para o topo do bloco da função *)
+  var
+    z_local: inteiro;
+    x, local_interno: inteiro;
+
   inicio
-    escreva(contador);
-    contador := contador + 1;
+    z_local := 15;
+    global1 := x_param * 3;
 
-    se teste > 1 entao
-        continue
-    senao
-        break
+    if global1 >= z_local entao
+    inicio
+      (* As variáveis agora são usadas aqui, mas declaradas acima *)
+      x := 17;
+      local_interno := 1;
+      global1 := local_interno + x;
+      retorno global1;
+    fim;
+
+    escreva(x_param);
+    escreva(z_local);
+    retorno global1 * z_local;
   fim;
-  
-  se ativo = verdadeiro entao
-    escreva(999);
-fim;
 
+procedure P();
+  (* CORREÇÃO: Variáveis movidas para o topo do bloco do procedimento *)
+  var
+    a: inteiro;
+    b: inteiro;
+  inicio
+    if g > 0 entao
+    inicio
+      (* A variável 'b' é usada aqui, mas declarada acima *)
+      b := 10;
+      a := b;
+    fim;
+  fim;
 
-funcao Responder(limite_local: inteiro): inteiro;
-inicio
-    retorno 1;
-fim;
+inicio (* Bloco principal *)
+  x := 34;
+  z := 23;
+  local := falso;
+  g := 5;
 
-inicio
-  limite := 10;
-  contador := 0;
-  ativo := verdadeiro;
-  
-  ImprimirContagem();
-  
-  escreva(0);
+  escreva(x + z);
+
+  (* Chama a função com a variável global 'x' e armazena o resultado em 'g' *)
+  g := modificaGlobal(x);
+
+  escreva(g);      (* Exibe o valor retornado pela função *)
+  escreva(global1); (* Exibe o valor da variável global após a modificação *)
+
+  P(); (* Chama o procedimento *)
 fim.
